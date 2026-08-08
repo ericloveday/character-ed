@@ -135,8 +135,10 @@
 
   <div class="card">
     <h2>1. Roster</h2>
-    <p class="hint">Paste your roster below, one student per line: <strong>First,Last</strong>. Uploading a new roster replaces the current one.</p>
-    <textarea id="rosterInput" placeholder="Ava,Johnson&#10;Ben,Smith&#10;..."></textarea>
+    <p class="hint">Upload a CSV file with <strong>Last, First</strong> columns. A header row is fine — it's ignored automatically. Uploading a new roster replaces the current one.</p>
+    <input type="file" id="csvFile" accept=".csv" onchange="handleCSVFile(event)">
+    <label style="margin-top:16px;">Or paste/edit directly (Last,First per line)</label>
+    <textarea id="rosterInput" placeholder="Johnson,Ava&#10;Smith,Ben&#10;..."></textarea>
     <button class="btn-primary" style="margin-top:10px;" onclick="saveRoster()">Save Roster</button>
     <span id="rosterCount" class="hint"></span>
   </div>
@@ -177,14 +179,14 @@
 // Paste the SAME firebaseConfig object you use for your other classroom tools
 // (the "bathroom-check-out" project) so this shares your existing Firebase project.
 const firebaseConfig = {
-    apiKey: "AIzaSyBsja7ruNaLkTDTxyga9qd9TZG2Zz5AjHA",
-    authDomain: "bathroom-check-out.firebaseapp.com",
-    databaseURL: "https://bathroom-check-out-default-rtdb.firebaseio.com",
-    projectId: "bathroom-check-out",
-    storageBucket: "bathroom-check-out.firebasestorage.app",
-    messagingSenderId: "385219454253",
-    appId: "1:385219454253:web:970acbfe28672f73c45fa4"
-  };
+  apiKey: "YOUR_API_KEY",
+  authDomain: "bathroom-check-out.firebaseapp.com",
+  databaseURL: "https://bathroom-check-out-default-rtdb.firebaseio.com",
+  projectId: "bathroom-check-out",
+  storageBucket: "bathroom-check-out.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
@@ -233,24 +235,57 @@ function listenRoster(){
     roster = snap.val() || [];
     document.getElementById('rosterCount').textContent = roster.length ? `${roster.length} students loaded.` : 'No roster uploaded yet.';
     if(roster.length && !document.getElementById('rosterInput').value){
-      document.getElementById('rosterInput').value = roster.map(p=>`${p.first},${p.last}`).join('\n');
+      document.getElementById('rosterInput').value = roster.map(p=>`${p.last},${p.first}`).join('\n');
     }
     renderSchedule();
   });
 }
 
+const HEADER_WORDS = ['last','last name','lastname','surname','first','first name','firstname','given name'];
+
+function isHeaderRow(parts){
+  const a = parts[0].toLowerCase().trim();
+  const b = parts[1].toLowerCase().trim();
+  return HEADER_WORDS.includes(a) || HEADER_WORDS.includes(b);
+}
+
+function parseRosterText(raw){
+  const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const parsed = [];
+  lines.forEach((line, idx) => {
+    const delim = line.includes('\t') ? '\t' : ',';
+    const parts = line.split(delim).map(p=>p.trim().replace(/^["']|["']$/g,''));
+    if(parts.length < 2 || !parts[0] || !parts[1]) return;
+    if(idx === 0 && isHeaderRow(parts)) return; // skip header row if present
+    // Column order is Last, First
+    parsed.push({ last: parts[0], first: parts[1] });
+  });
+  return parsed;
+}
+
+function handleCSVFile(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const parsed = parseRosterText(e.target.result);
+    if(!parsed.length){
+      setStatus('Could not find any names in that file. Check the columns are Last,First.', true);
+      return;
+    }
+    document.getElementById('rosterInput').value = parsed.map(p=>`${p.last},${p.first}`).join('\n');
+    setStatus(`Loaded ${parsed.length} students from file — click Save Roster to confirm.`, false);
+  };
+  reader.onerror = () => setStatus('Could not read that file.', true);
+  reader.readAsText(file);
+}
+window.handleCSVFile = handleCSVFile;
+
 function saveRoster(){
   const raw = document.getElementById('rosterInput').value.trim();
   if(!raw){ setStatus('Roster is empty.', true); return; }
-  const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  const parsed = [];
-  for(const line of lines){
-    const delim = line.includes('\t') ? '\t' : ',';
-    const parts = line.split(delim).map(p=>p.trim().replace(/^["']|["']$/g,''));
-    if(parts.length < 2 || !parts[0] || !parts[1]) continue;
-    parsed.push({ first: parts[0], last: parts[1] });
-  }
-  if(!parsed.length){ setStatus('Could not parse any names. Use First,Last per line.', true); return; }
+  const parsed = parseRosterText(raw);
+  if(!parsed.length){ setStatus('Could not parse any names. Use Last,First per line.', true); return; }
   db.ref(`${ROOT}/roster`).set(parsed).then(()=>{
     setStatus(`Roster saved: ${parsed.length} students.`, false);
   }).catch(e=>setStatus(e.message, true));
