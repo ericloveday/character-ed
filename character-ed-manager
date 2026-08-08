@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Character Ed Volunteer Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --red:#ce1f07;
+    --black:#111111;
+    --white:#ffffff;
+    --gray-bg:#f4f4f4;
+    --gray-border:#e0e0e0;
+    --gray-text:#666666;
+    --green:#1e8a3c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:'Montserrat',sans-serif;
+    margin:0;
+    background:var(--gray-bg);
+    color:var(--black);
+  }
+  header{
+    background:var(--black);
+    color:var(--white);
+    padding:20px 24px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  header h1{
+    margin:0;
+    font-size:1.3rem;
+    font-weight:800;
+  }
+  header .accent{color:var(--red);}
+  #userBox{display:flex;align-items:center;gap:10px;font-size:.85rem;}
+  #userBox img{width:32px;height:32px;border-radius:50%;}
+  button{
+    font-family:'Montserrat',sans-serif;
+    cursor:pointer;
+    border:none;
+    border-radius:6px;
+    font-weight:600;
+    padding:9px 16px;
+    font-size:.85rem;
+    transition:opacity .15s;
+  }
+  button:hover{opacity:.85;}
+  .btn-primary{background:var(--red);color:var(--white);}
+  .btn-secondary{background:var(--black);color:var(--white);}
+  .btn-outline{background:var(--white);color:var(--black);border:1px solid var(--gray-border);}
+  .btn-small{padding:5px 10px;font-size:.75rem;}
+  main{max-width:1000px;margin:0 auto;padding:24px;}
+  #gate{
+    max-width:420px;
+    margin:80px auto;
+    background:var(--white);
+    border-radius:10px;
+    padding:40px 30px;
+    text-align:center;
+    box-shadow:0 2px 10px rgba(0,0,0,.08);
+  }
+  #gate h2{margin-top:0;}
+  .card{
+    background:var(--white);
+    border-radius:10px;
+    padding:22px 24px;
+    margin-bottom:22px;
+    box-shadow:0 1px 4px rgba(0,0,0,.06);
+  }
+  .card h2{
+    margin-top:0;
+    font-size:1.05rem;
+    border-bottom:3px solid var(--red);
+    display:inline-block;
+    padding-bottom:6px;
+  }
+  label{display:block;font-size:.8rem;font-weight:600;margin-bottom:5px;margin-top:12px;color:var(--gray-text);}
+  textarea, input[type=date], select{
+    width:100%;
+    font-family:'Montserrat',sans-serif;
+    padding:9px 10px;
+    border:1px solid var(--gray-border);
+    border-radius:6px;
+    font-size:.9rem;
+  }
+  textarea{height:120px;resize:vertical;}
+  .row{display:flex;gap:14px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:160px;}
+  .hint{font-size:.75rem;color:var(--gray-text);margin-top:6px;}
+  table{width:100%;border-collapse:collapse;margin-top:14px;}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--gray-border);font-size:.85rem;vertical-align:middle;}
+  th{color:var(--gray-text);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;}
+  tr.inactive{opacity:.45;}
+  .badge{
+    display:inline-block;padding:2px 9px;border-radius:20px;font-size:.7rem;font-weight:700;
+  }
+  .badge-open{background:#fdecea;color:var(--red);}
+  .badge-filled{background:#e8f6ec;color:var(--green);}
+  .badge-off{background:#eee;color:var(--gray-text);}
+  .edit-row td{background:#fafafa;}
+  .edit-panel{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:10px 0;}
+  .edit-panel > div{min-width:160px;}
+  .actions{display:flex;gap:6px;flex-wrap:wrap;}
+  #status{font-size:.8rem;margin-top:10px;}
+  #status.ok{color:var(--green);}
+  #status.err{color:var(--red);}
+  .toggle{display:flex;align-items:center;gap:6px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Character Ed <span class="accent">Volunteer Manager</span></h1>
+  <div id="userBox"></div>
+</header>
+
+<div id="gate">
+  <h2>Sign in required</h2>
+  <p style="color:var(--gray-text);font-size:.9rem;">Sign in with your Cornerstone Google account to manage the Character Ed volunteer schedule.</p>
+  <button class="btn-primary" onclick="signIn()">Sign in with Google</button>
+  <p id="authMsg" style="color:var(--red);font-size:.8rem;"></p>
+</div>
+
+<main id="app" style="display:none;">
+
+  <div class="card">
+    <h2>1. Roster</h2>
+    <p class="hint">Paste your roster below, one student per line: <strong>First,Last</strong>. Uploading a new roster replaces the current one.</p>
+    <textarea id="rosterInput" placeholder="Ava,Johnson&#10;Ben,Smith&#10;..."></textarea>
+    <button class="btn-primary" style="margin-top:10px;" onclick="saveRoster()">Save Roster</button>
+    <span id="rosterCount" class="hint"></span>
+  </div>
+
+  <div class="card">
+    <h2>2. Generate Wednesdays</h2>
+    <p class="hint">Auto-generates every Wednesday between two dates. Existing dates (and their signups) are never overwritten — safe to re-run.</p>
+    <div class="row">
+      <div>
+        <label>School year start</label>
+        <input type="date" id="rangeStart">
+      </div>
+      <div>
+        <label>School year end</label>
+        <input type="date" id="rangeEnd">
+      </div>
+    </div>
+    <button class="btn-primary" style="margin-top:14px;" onclick="generateWednesdays()">Generate Wednesdays</button>
+    <span id="genStatus" class="hint"></span>
+  </div>
+
+  <div class="card">
+    <h2>3. Schedule</h2>
+    <p class="hint">Uncheck "School day" to mark off a break/holiday Wednesday — it will be hidden from the student sign-up form. Use Edit to manually assign or change a volunteer/friend.</p>
+    <table>
+      <thead>
+        <tr><th>Date</th><th>School day</th><th>Status</th><th>Volunteer</th><th>Friend</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="scheduleBody"></tbody>
+    </table>
+  </div>
+
+  <div id="status"></div>
+</main>
+
+<script>
+// ============ FIREBASE CONFIG ============
+// Paste the SAME firebaseConfig object you use for your other classroom tools
+// (the "bathroom-check-out" project) so this shares your existing Firebase project.
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "bathroom-check-out.firebaseapp.com",
+  databaseURL: "https://bathroom-check-out-default-rtdb.firebaseio.com",
+  projectId: "bathroom-check-out",
+  storageBucket: "bathroom-check-out.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+const ALLOWED_DOMAIN = "cornerstonek12.org";
+const ROOT = "characterEd"; // shared node — this program isn't per-teacher scoped
+
+let roster = []; // [{first,last}]
+let schedule = {}; // { "2026-09-09": {active, volunteer, friend} }
+
+// ---------- AUTH ----------
+function signIn(){
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ hd: ALLOWED_DOMAIN });
+  auth.signInWithPopup(provider).catch(err => {
+    document.getElementById('authMsg').textContent = err.message;
+  });
+}
+function signOutUser(){ auth.signOut(); }
+window.signIn = signIn;
+window.signOutUser = signOutUser;
+
+auth.onAuthStateChanged(user => {
+  if(user && user.email && user.email.endsWith("@"+ALLOWED_DOMAIN)){
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('userBox').innerHTML =
+      `<img src="${user.photoURL||''}"><span>${user.displayName||user.email}</span>
+       <button class="btn-outline btn-small" onclick="signOutUser()">Sign out</button>`;
+    listenRoster();
+    listenSchedule();
+  } else {
+    if(user){
+      document.getElementById('authMsg').textContent = `Please sign in with a @${ALLOWED_DOMAIN} account.`;
+      auth.signOut();
+    }
+    document.getElementById('gate').style.display = 'block';
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('userBox').innerHTML = '';
+  }
+});
+
+// ---------- ROSTER ----------
+function listenRoster(){
+  db.ref(`${ROOT}/roster`).on('value', snap => {
+    roster = snap.val() || [];
+    document.getElementById('rosterCount').textContent = roster.length ? `${roster.length} students loaded.` : 'No roster uploaded yet.';
+    if(roster.length && !document.getElementById('rosterInput').value){
+      document.getElementById('rosterInput').value = roster.map(p=>`${p.first},${p.last}`).join('\n');
+    }
+    renderSchedule();
+  });
+}
+
+function saveRoster(){
+  const raw = document.getElementById('rosterInput').value.trim();
+  if(!raw){ setStatus('Roster is empty.', true); return; }
+  const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const parsed = [];
+  for(const line of lines){
+    const delim = line.includes('\t') ? '\t' : ',';
+    const parts = line.split(delim).map(p=>p.trim().replace(/^["']|["']$/g,''));
+    if(parts.length < 2 || !parts[0] || !parts[1]) continue;
+    parsed.push({ first: parts[0], last: parts[1] });
+  }
+  if(!parsed.length){ setStatus('Could not parse any names. Use First,Last per line.', true); return; }
+  db.ref(`${ROOT}/roster`).set(parsed).then(()=>{
+    setStatus(`Roster saved: ${parsed.length} students.`, false);
+  }).catch(e=>setStatus(e.message, true));
+}
+window.saveRoster = saveRoster;
+
+// ---------- SCHEDULE GENERATION ----------
+function formatDateKey(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function generateWednesdays(){
+  const startVal = document.getElementById('rangeStart').value;
+  const endVal = document.getElementById('rangeEnd').value;
+  if(!startVal || !endVal){ document.getElementById('genStatus').textContent = 'Pick both dates.'; return; }
+  const start = new Date(startVal+'T00:00:00');
+  const end = new Date(endVal+'T00:00:00');
+  let d = new Date(start);
+  while(d.getDay() !== 3) d.setDate(d.getDate()+1); // 3 = Wednesday
+  const updates = {};
+  let count = 0;
+  while(d <= end){
+    const key = formatDateKey(d);
+    if(!schedule[key]){
+      updates[`${ROOT}/wednesdays/${key}`] = { active:true, volunteer:null, friend:null };
+      count++;
+    }
+    d.setDate(d.getDate()+7);
+  }
+  if(count === 0){ document.getElementById('genStatus').textContent = 'No new Wednesdays to add.'; return; }
+  db.ref().update(updates).then(()=>{
+    document.getElementById('genStatus').textContent = `Added ${count} new Wednesday(s).`;
+  }).catch(e=>{ document.getElementById('genStatus').textContent = e.message; });
+}
+window.generateWednesdays = generateWednesdays;
+
+// ---------- SCHEDULE LISTEN / RENDER ----------
+function listenSchedule(){
+  db.ref(`${ROOT}/wednesdays`).on('value', snap => {
+    schedule = snap.val() || {};
+    renderSchedule();
+  });
+}
+
+function niceDate(key){
+  const d = new Date(key+'T00:00:00');
+  return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+}
+
+let editingKey = null;
+
+function renderSchedule(){
+  const body = document.getElementById('scheduleBody');
+  const keys = Object.keys(schedule).sort();
+  if(!keys.length){ body.innerHTML = '<tr><td colspan="6" class="hint">No Wednesdays generated yet.</td></tr>'; return; }
+  body.innerHTML = keys.map(key => {
+    const entry = schedule[key];
+    const isEditing = editingKey === key;
+    const volunteerName = entry.volunteer ? `${entry.volunteer.first} ${entry.volunteer.last}` : '—';
+    const friendName = entry.friend ? `${entry.friend.first} ${entry.friend.last}` : '—';
+    let statusBadge;
+    if(!entry.active) statusBadge = '<span class="badge badge-off">No School</span>';
+    else if(entry.volunteer) statusBadge = '<span class="badge badge-filled">Filled</span>';
+    else statusBadge = '<span class="badge badge-open">Open</span>';
+
+    let mainRow = `
+      <tr class="${entry.active?'':'inactive'}">
+        <td>${niceDate(key)}</td>
+        <td class="toggle"><input type="checkbox" ${entry.active?'checked':''} onchange="toggleActive('${key}', this.checked)"></td>
+        <td>${statusBadge}</td>
+        <td>${volunteerName}</td>
+        <td>${friendName}</td>
+        <td class="actions">
+          <button class="btn-outline btn-small" onclick="toggleEdit('${key}')">${isEditing?'Close':'Edit'}</button>
+          <button class="btn-outline btn-small" onclick="clearEntry('${key}')">Clear</button>
+        </td>
+      </tr>`;
+
+    if(isEditing){
+      const options = roster.map(p=>`<option value="${p.first}|${p.last}">${p.first} ${p.last}</option>`).join('');
+      const volVal = entry.volunteer ? `${entry.volunteer.first}|${entry.volunteer.last}` : '';
+      const friendVal = entry.friend ? `${entry.friend.first}|${entry.friend.last}` : '';
+      mainRow += `
+        <tr class="edit-row">
+          <td colspan="6">
+            <div class="edit-panel">
+              <div>
+                <label>Volunteer</label>
+                <select id="editVol-${key}">
+                  <option value="">-- none --</option>${options}
+                </select>
+              </div>
+              <div>
+                <label>Friend (optional)</label>
+                <select id="editFriend-${key}">
+                  <option value="">-- none --</option>${options}
+                </select>
+              </div>
+              <div>
+                <button class="btn-primary btn-small" onclick="saveEdit('${key}')">Save</button>
+              </div>
+            </div>
+          </td>
+        </tr>`;
+      setTimeout(()=>{
+        const vSel = document.getElementById(`editVol-${key}`);
+        const fSel = document.getElementById(`editFriend-${key}`);
+        if(vSel) vSel.value = volVal;
+        if(fSel) fSel.value = friendVal;
+      },0);
+    }
+    return mainRow;
+  }).join('');
+}
+
+function toggleActive(key, checked){
+  db.ref(`${ROOT}/wednesdays/${key}/active`).set(checked);
+}
+window.toggleActive = toggleActive;
+
+function toggleEdit(key){
+  editingKey = (editingKey === key) ? null : key;
+  renderSchedule();
+}
+window.toggleEdit = toggleEdit;
+
+function saveEdit(key){
+  const vVal = document.getElementById(`editVol-${key}`).value;
+  const fVal = document.getElementById(`editFriend-${key}`).value;
+  const toObj = v => { if(!v) return null; const [first,last]=v.split('|'); return {first,last}; };
+  db.ref(`${ROOT}/wednesdays/${key}`).update({
+    volunteer: toObj(vVal),
+    friend: toObj(fVal)
+  }).then(()=>{ editingKey=null; setStatus(`Updated ${niceDate(key)}.`, false); });
+}
+window.saveEdit = saveEdit;
+
+function clearEntry(key){
+  db.ref(`${ROOT}/wednesdays/${key}`).update({ volunteer:null, friend:null }).then(()=>{
+    setStatus(`Cleared ${niceDate(key)}.`, false);
+  });
+}
+window.clearEntry = clearEntry;
+
+function setStatus(msg, isErr){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isErr ? 'err' : 'ok';
+}
+</script>
+</body>
+</html>
