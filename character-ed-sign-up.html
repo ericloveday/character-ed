@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Character Ed Sign-Up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --red:#ce1f07;
+    --black:#111111;
+    --white:#ffffff;
+    --gray-bg:#f4f4f4;
+    --gray-border:#e0e0e0;
+    --gray-text:#666666;
+    --green:#1e8a3c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:'Montserrat',sans-serif;
+    margin:0;
+    background:var(--gray-bg);
+    color:var(--black);
+    display:flex;
+    justify-content:center;
+    padding:30px 16px;
+  }
+  .card{
+    background:var(--white);
+    max-width:460px;
+    width:100%;
+    border-radius:12px;
+    padding:30px 28px;
+    box-shadow:0 2px 12px rgba(0,0,0,.08);
+  }
+  h1{
+    font-size:1.4rem;
+    font-weight:800;
+    margin:0 0 4px 0;
+  }
+  h1 .accent{color:var(--red);}
+  p.sub{color:var(--gray-text);font-size:.85rem;margin-top:0;margin-bottom:22px;}
+  label{display:block;font-size:.8rem;font-weight:600;margin-bottom:6px;margin-top:16px;color:var(--gray-text);}
+  select{
+    width:100%;
+    font-family:'Montserrat',sans-serif;
+    padding:10px;
+    border:1px solid var(--gray-border);
+    border-radius:6px;
+    font-size:.95rem;
+    background:var(--white);
+  }
+  .checkbox-row{display:flex;align-items:center;gap:8px;margin-top:18px;}
+  .checkbox-row input{width:auto;}
+  .checkbox-row label{margin:0;font-size:.85rem;color:var(--black);}
+  button{
+    font-family:'Montserrat',sans-serif;
+    width:100%;
+    margin-top:24px;
+    padding:12px;
+    border:none;
+    border-radius:8px;
+    background:var(--red);
+    color:var(--white);
+    font-weight:700;
+    font-size:.95rem;
+    cursor:pointer;
+    transition:opacity .15s;
+  }
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  button:hover:not(:disabled){opacity:.85;}
+  #msg{margin-top:16px;font-size:.85rem;font-weight:600;text-align:center;}
+  #msg.ok{color:var(--green);}
+  #msg.err{color:var(--red);}
+  #friendField{display:none;}
+  .hint{font-size:.75rem;color:var(--gray-text);margin-top:4px;}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Character Ed <span class="accent">Sign-Up</span></h1>
+  <p class="sub">Pick an open Wednesday and volunteer for Character Ed. You can bring a friend along if you'd like!</p>
+
+  <label for="nameSelect">Your name</label>
+  <select id="nameSelect">
+    <option value="">Loading roster...</option>
+  </select>
+
+  <label for="dateSelect">Choose a Wednesday</label>
+  <select id="dateSelect">
+    <option value="">Loading dates...</option>
+  </select>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="bringFriend" onchange="toggleFriendField()">
+    <label for="bringFriend">Bring a friend</label>
+  </div>
+
+  <div id="friendField">
+    <label for="friendSelect">Friend's name</label>
+    <select id="friendSelect">
+      <option value="">-- select --</option>
+    </select>
+  </div>
+
+  <button id="submitBtn" onclick="submitSignup()">Sign Me Up</button>
+  <div id="msg"></div>
+</div>
+
+<script>
+// ============ FIREBASE CONFIG ============
+// Same project/config as the admin dashboard (bathroom-check-out project).
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "bathroom-check-out.firebaseapp.com",
+  databaseURL: "https://bathroom-check-out-default-rtdb.firebaseio.com",
+  projectId: "bathroom-check-out",
+  storageBucket: "bathroom-check-out.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const ROOT = "characterEd";
+
+let roster = [];
+let schedule = {};
+
+function populateNameSelects(){
+  const sorted = [...roster].sort((a,b)=> a.last.localeCompare(b.last) || a.first.localeCompare(b.first));
+  const opts = '<option value="">-- select --</option>' +
+    sorted.map(p=>`<option value="${p.first}|${p.last}">${p.first} ${p.last}</option>`).join('');
+  document.getElementById('nameSelect').innerHTML = opts;
+  document.getElementById('friendSelect').innerHTML = opts;
+}
+
+function niceDate(key){
+  const d = new Date(key+'T00:00:00');
+  return d.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
+}
+
+function populateDateSelect(){
+  const openKeys = Object.keys(schedule)
+    .filter(k => schedule[k].active && !schedule[k].volunteer)
+    .sort();
+  const sel = document.getElementById('dateSelect');
+  if(!openKeys.length){
+    sel.innerHTML = '<option value="">No open dates right now</option>';
+    document.getElementById('submitBtn').disabled = true;
+    return;
+  }
+  document.getElementById('submitBtn').disabled = false;
+  sel.innerHTML = '<option value="">-- select a Wednesday --</option>' +
+    openKeys.map(k=>`<option value="${k}">${niceDate(k)}</option>`).join('');
+}
+
+db.ref(`${ROOT}/roster`).on('value', snap => {
+  roster = snap.val() || [];
+  populateNameSelects();
+});
+
+db.ref(`${ROOT}/wednesdays`).on('value', snap => {
+  schedule = snap.val() || {};
+  populateDateSelect();
+});
+
+function toggleFriendField(){
+  document.getElementById('friendField').style.display =
+    document.getElementById('bringFriend').checked ? 'block' : 'none';
+}
+window.toggleFriendField = toggleFriendField;
+
+function setMsg(text, isErr){
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = isErr ? 'err' : 'ok';
+}
+
+function submitSignup(){
+  const nameVal = document.getElementById('nameSelect').value;
+  const dateKey = document.getElementById('dateSelect').value;
+  const bringFriend = document.getElementById('bringFriend').checked;
+  const friendVal = document.getElementById('friendSelect').value;
+
+  if(!nameVal){ setMsg('Please choose your name.', true); return; }
+  if(!dateKey){ setMsg('Please choose a Wednesday.', true); return; }
+  if(bringFriend && !friendVal){ setMsg("Please choose your friend's name, or uncheck the box.", true); return; }
+  if(bringFriend && friendVal === nameVal){ setMsg('You picked yourself as the friend — choose someone else!', true); return; }
+
+  const [first,last] = nameVal.split('|');
+  const volunteer = { first, last };
+  let friend = null;
+  if(bringFriend){
+    const [ffirst,flast] = friendVal.split('|');
+    friend = { first:ffirst, last:flast };
+  }
+
+  document.getElementById('submitBtn').disabled = true;
+
+  db.ref(`${ROOT}/wednesdays/${dateKey}`).transaction(current => {
+    if(current === null) return; // shouldn't happen, abort
+    if(current.volunteer) return; // already taken — abort transaction
+    current.volunteer = volunteer;
+    current.friend = friend;
+    return current;
+  }).then(result => {
+    if(!result.committed){
+      setMsg('Sorry — someone just grabbed that Wednesday. Please pick another date.', true);
+      document.getElementById('submitBtn').disabled = false;
+      return;
+    }
+    setMsg(`You're signed up for ${niceDate(dateKey)}!${friend ? ' See you and your friend there.' : ''}`, false);
+    document.getElementById('bringFriend').checked = false;
+    toggleFriendField();
+  }).catch(err => {
+    setMsg(err.message, true);
+    document.getElementById('submitBtn').disabled = false;
+  });
+}
+window.submitSignup = submitSignup;
+</script>
+</body>
+</html>
