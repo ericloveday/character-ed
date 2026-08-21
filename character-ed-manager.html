@@ -70,6 +70,9 @@
     box-shadow:0 2px 10px rgba(0,0,0,.08);
   }
   #gate h2{margin-top:0;}
+  #gate form{text-align:left;margin-top:16px;}
+  #gate form button{width:100%;margin-top:14px;}
+  #gate .contact-note{color:var(--gray-text);font-size:.75rem;margin-top:14px;}
   .card{
     background:var(--white);
     border-radius:10px;
@@ -85,7 +88,7 @@
     padding-bottom:6px;
   }
   label{display:block;font-size:.8rem;font-weight:600;margin-bottom:5px;margin-top:12px;color:var(--gray-text);}
-  textarea, input[type=date], select{
+  textarea, input[type=date], input[type=email], input[type=password], select{
     width:100%;
     font-family:'Montserrat',sans-serif;
     padding:9px 10px;
@@ -126,9 +129,16 @@
 
 <div id="gate">
   <h2>Sign in required</h2>
-  <p style="color:var(--gray-text);font-size:.9rem;">Sign in with your Cornerstone Google account to manage the Character Ed volunteer schedule.</p>
-  <button class="btn-primary" onclick="signIn()">Sign in with Google</button>
-  <p id="authMsg" style="color:var(--red);font-size:.8rem;"></p>
+  <p style="color:var(--gray-text);font-size:.9rem;">Sign in with your staff account to manage the Character Ed volunteer schedule.</p>
+  <form id="loginForm">
+    <label for="loginEmail">Email</label>
+    <input type="email" id="loginEmail" placeholder="you@cornerstonek12.org" autocomplete="username">
+    <label for="loginPassword">Password</label>
+    <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+    <button type="submit" class="btn-primary">Sign In</button>
+  </form>
+  <p id="authMsg" style="color:var(--red);font-size:.8rem;margin-top:10px;"></p>
+  <p class="contact-note">Contact Eric Loveday for an account or a password reset.</p>
 </div>
 
 <main id="app" style="display:none;">
@@ -176,8 +186,6 @@
 
 <script>
 // ============ FIREBASE CONFIG ============
-// Paste the SAME firebaseConfig object you use for your other classroom tools
-// (the "bathroom-check-out" project) so this shares your existing Firebase project.
  const firebaseConfig = {
     apiKey: "AIzaSyBsja7ruNaLkTDTxyga9qd9TZG2Zz5AjHA",
     authDomain: "bathroom-check-out.firebaseapp.com",
@@ -191,38 +199,40 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
 
-const ALLOWED_DOMAIN = "cornerstonek12.org";
 const ROOT = "characterEd"; // shared node — this program isn't per-teacher scoped
 
 let roster = []; // [{first,last}]
 let schedule = {}; // { "2026-09-09": {active, volunteer, friend} }
 
 // ---------- AUTH ----------
-function signIn(){
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ hd: ALLOWED_DOMAIN });
-  auth.signInWithPopup(provider).catch(err => {
-    document.getElementById('authMsg').textContent = err.message;
+document.getElementById('loginForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  document.getElementById('authMsg').textContent = '';
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if(!email || !password){
+    document.getElementById('authMsg').textContent = 'Enter both email and password.';
+    return;
+  }
+  auth.signInWithEmailAndPassword(email, password).catch(err => {
+    console.error(err);
+    document.getElementById('authMsg').textContent = 'Sign-in failed — check your email and password and try again.';
   });
-}
+});
+
 function signOutUser(){ auth.signOut(); }
-window.signIn = signIn;
 window.signOutUser = signOutUser;
 
 auth.onAuthStateChanged(user => {
-  if(user && user.email && user.email.endsWith("@"+ALLOWED_DOMAIN)){
+  if(user){
     document.getElementById('gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('userBox').innerHTML =
-      `<img src="${user.photoURL||''}"><span>${user.displayName||user.email}</span>
+      `<span>${user.email||''}</span>
        <button class="btn-outline btn-small" onclick="signOutUser()">Sign out</button>`;
     listenRoster();
     listenSchedule();
   } else {
-    if(user){
-      document.getElementById('authMsg').textContent = `Please sign in with a @${ALLOWED_DOMAIN} account.`;
-      auth.signOut();
-    }
     document.getElementById('gate').style.display = 'block';
     document.getElementById('app').style.display = 'none';
     document.getElementById('userBox').innerHTML = '';
